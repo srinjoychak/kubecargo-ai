@@ -200,6 +200,7 @@ parse_args() {
         arm64)  ARCH_RPM="aarch64" ;;
         *)      log_error "Invalid --arch '${ARCH}'. Must be 'amd64' or 'arm64'"; exit 1 ;;
     esac
+    PLATFORM="${OS}-${ARCH}"
 
     # Validate required args
     if [[ -z "$K8S_VERSION" ]]; then

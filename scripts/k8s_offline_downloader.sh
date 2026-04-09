@@ -26,6 +26,7 @@ set -euo pipefail
 # ============================================================================
 SCRIPT_VERSION="2.4.0"
 ARCH="amd64"
+ARCH_RPM="x86_64"
 OS="linux"
 PLATFORM="${OS}-${ARCH}"
 
@@ -85,6 +86,7 @@ Optional:
   --cfssl-version V        Override cfssl version (default: ${DEFAULT_CFSSL_VERSION})
   --yq-version V           Override yq version (default: ${DEFAULT_YQ_VERSION})
   --calico-version V       Override Calico version (default: auto-resolved from K8s mapping)
+  --arch ARCH              Target binary architecture: amd64 or arm64 (default: amd64)
   --rpm-config FILE        JSON file with RPM version overrides (see docs for schema)
                            Overrides the hardcoded RPM tables set by --target-os.
                            The agent generates this file after researching current
@@ -160,6 +162,7 @@ parse_args() {
             --k8s-version)       K8S_VERSION="$2"; shift 2;;
             --output-dir)        OUTPUT_DIR="$2"; shift 2;;
             --target-os)         TARGET_EL="$2"; shift 2;;
+            --arch)              ARCH="$2"; shift 2;;
             --etcd-version)      ETCD_VERSION="$2"; shift 2;;
             --helm-version)      HELM_VERSION="$2"; shift 2;;
             --containerd-version) CONTAINERD_VERSION="$2"; shift 2;;
@@ -181,6 +184,13 @@ parse_args() {
             *)                   log_error "Unknown option: $1"; usage;;
         esac
     done
+
+    # Derive RPM arch from binary arch
+    case "$ARCH" in
+        amd64)  ARCH_RPM="x86_64"  ;;
+        arm64)  ARCH_RPM="aarch64" ;;
+        *)      log_error "Invalid --arch '${ARCH}'. Must be 'amd64' or 'arm64'"; exit 1 ;;
+    esac
 
     # Validate required args
     if [[ -z "$K8S_VERSION" ]]; then
@@ -370,10 +380,10 @@ resolve_target_os() {
     fi
 
     # Set up AlmaLinux mirror base URLs for the target OS
-    ALMA_APPSTREAM_BASE="https://repo.almalinux.org/almalinux/${TARGET_EL_MAJOR}/AppStream/x86_64/os/Packages"
-    ALMA_BASEOS_BASE="https://repo.almalinux.org/almalinux/${TARGET_EL_MAJOR}/BaseOS/x86_64/os/Packages"
+    ALMA_APPSTREAM_BASE="https://repo.almalinux.org/almalinux/${TARGET_EL_MAJOR}/AppStream/${ARCH_RPM}/os/Packages"
+    ALMA_BASEOS_BASE="https://repo.almalinux.org/almalinux/${TARGET_EL_MAJOR}/BaseOS/${ARCH_RPM}/os/Packages"
     ALMA_VAULT_BASE="https://vault.almalinux.org"
-    DOCKER_REPO_BASE="https://download.docker.com/linux/centos/${TARGET_EL_MAJOR}/x86_64/stable/Packages"
+    DOCKER_REPO_BASE="https://download.docker.com/linux/centos/${TARGET_EL_MAJOR}/${ARCH_RPM}/stable/Packages"
 
     log_debug "ALMA_APPSTREAM_BASE=${ALMA_APPSTREAM_BASE}"
     log_debug "ALMA_BASEOS_BASE=${ALMA_BASEOS_BASE}"
@@ -395,46 +405,46 @@ setup_rpm_tables() {
     # --- containerd ---
     if [[ "$TARGET_EL" == "el8" ]]; then
         # Docker stopped publishing el8 containerd builds after 1.6.32
-        CONTAINERD_RPM="containerd.io-1.6.32-3.1.el8.x86_64.rpm"
+        CONTAINERD_RPM="containerd.io-1.6.32-3.1.el8.${ARCH_RPM}.rpm"
         CONTAINERD_VERSION_EFFECTIVE="1.6.32"
         log_warn "containerd.io for el8 is limited to version 1.6.32 (Docker ended el8 builds)"
         log_warn "  el9 uses containerd ${CONTAINERD_VERSION}. el8 targets will get 1.6.32."
     else
-        CONTAINERD_RPM="containerd.io-${CONTAINERD_VERSION}-3.1.el9.x86_64.rpm"
+        CONTAINERD_RPM="containerd.io-${CONTAINERD_VERSION}-3.1.el9.${ARCH_RPM}.rpm"
         CONTAINERD_VERSION_EFFECTIVE="${CONTAINERD_VERSION}"
     fi
 
     # --- socat RPM URLs (for binary extraction fallback) ---
     if [[ "$TARGET_EL" == "el8" ]]; then
         SOCAT_RPM_URLS=(
-            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-2.el8_10.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-1.el8.x86_64.rpm"
+            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-2.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-1.el8.${ARCH_RPM}.rpm"
         )
     else
         SOCAT_RPM_URLS=(
-            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-8.el9.alma.1.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-8.el9.x86_64.rpm"
+            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-8.el9.alma.1.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/socat-1.7.4.1-8.el9.${ARCH_RPM}.rpm"
         )
     fi
 
     # --- keepalived RPM (for binary extraction fallback) ---
     if [[ "$TARGET_EL" == "el8" ]]; then
-        KEEPALIVED_RPM_URL="${ALMA_APPSTREAM_BASE}/keepalived-2.1.5-11.el8_10.x86_64.rpm"
+        KEEPALIVED_RPM_URL="${ALMA_APPSTREAM_BASE}/keepalived-2.1.5-11.el8_10.${ARCH_RPM}.rpm"
     else
-        KEEPALIVED_RPM_URL="${ALMA_APPSTREAM_BASE}/keepalived-2.2.8-6.el9.x86_64.rpm"
+        KEEPALIVED_RPM_URL="${ALMA_APPSTREAM_BASE}/keepalived-2.2.8-6.el9.${ARCH_RPM}.rpm"
     fi
 
     # --- chrony RPM ---
     if [[ "$TARGET_EL" == "el8" ]]; then
         CHRONY_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/chrony-4.5-2.el8_10.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/chrony-4.3-2.el8.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/chrony-4.5-2.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/chrony-4.3-2.el8.${ARCH_RPM}.rpm"
         )
     else
         CHRONY_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/chrony-4.6.1-2.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.4/BaseOS/x86_64/os/Packages/chrony-4.5-1.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.3/BaseOS/x86_64/os/Packages/chrony-4.3-1.el9.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/chrony-4.6.1-2.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.4/BaseOS/${ARCH_RPM}/os/Packages/chrony-4.5-1.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.3/BaseOS/${ARCH_RPM}/os/Packages/chrony-4.3-1.el9.${ARCH_RPM}.rpm"
         )
     fi
 
@@ -444,20 +454,20 @@ setup_rpm_tables() {
     # NOTE: On el8, net-snmp-libs and lm_sensors-libs are in BaseOS (not AppStream)
     if [[ "$TARGET_EL" == "el8" ]]; then
         KA_CORE_RPMS=(
-            "${ALMA_APPSTREAM_BASE}/keepalived-2.1.5-11.el8_10.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/net-snmp-libs-5.8-33.el8_10.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/net-snmp-agent-libs-5.8-33.el8_10.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/lm_sensors-libs-3.4.0-23.el8.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-3.1.11-2.el8_3.x86_64.rpm"
+            "${ALMA_APPSTREAM_BASE}/keepalived-2.1.5-11.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/net-snmp-libs-5.8-33.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/net-snmp-agent-libs-5.8-33.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/lm_sensors-libs-3.4.0-23.el8.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-3.1.11-2.el8_3.${ARCH_RPM}.rpm"
             "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-config-3.1.11-2.el8_3.noarch.rpm"
         )
     else
         KA_CORE_RPMS=(
-            "${ALMA_APPSTREAM_BASE}/keepalived-2.2.8-6.el9.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/net-snmp-libs-5.9.1-17.el9.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/net-snmp-agent-libs-5.9.1-17.el9.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/lm_sensors-libs-3.6.0-10.el9.x86_64.rpm"
-            "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-3.2.6-1.el9_0.x86_64.rpm"
+            "${ALMA_APPSTREAM_BASE}/keepalived-2.2.8-6.el9.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/net-snmp-libs-5.9.1-17.el9.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/net-snmp-agent-libs-5.9.1-17.el9.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/lm_sensors-libs-3.6.0-10.el9.${ARCH_RPM}.rpm"
+            "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-3.2.6-1.el9_0.${ARCH_RPM}.rpm"
             "${ALMA_APPSTREAM_BASE}/mariadb-connector-c-config-3.2.6-1.el9_0.noarch.rpm"
         )
     fi
@@ -468,21 +478,21 @@ setup_rpm_tables() {
         PERL_RPM_BASE="${ALMA_BASEOS_BASE}"
         PERL_RPM_APPSTREAM="${ALMA_APPSTREAM_BASE}"
         PERL_RPMS=(
-            "perl-interpreter-5.26.3-423.el8_10.x86_64.rpm"
-            "perl-libs-5.26.3-423.el8_10.x86_64.rpm"
+            "perl-interpreter-5.26.3-423.el8_10.${ARCH_RPM}.rpm"
+            "perl-libs-5.26.3-423.el8_10.${ARCH_RPM}.rpm"
             "perl-AutoLoader-5.74-423.el8_10.noarch.rpm"
-            "perl-B-1.74-423.el8_10.x86_64.rpm"
+            "perl-B-1.74-423.el8_10.${ARCH_RPM}.rpm"
             "perl-base-2.27-423.el8_10.noarch.rpm"
             "perl-Carp-1.42-396.el8.noarch.rpm"
             "perl-Class-Struct-0.65-423.el8_10.noarch.rpm"
             "perl-constant-1.33-396.el8.noarch.rpm"
-            "perl-Data-Dumper-2.167-399.el8.x86_64.rpm"
+            "perl-Data-Dumper-2.167-399.el8.${ARCH_RPM}.rpm"
             "perl-Digest-1.17-395.el8.noarch.rpm"
-            "perl-Digest-MD5-2.55-396.el8.x86_64.rpm"
-            "perl-Encode-2.97-3.el8.x86_64.rpm"
-            "perl-Errno-1.28-423.el8_10.x86_64.rpm"
+            "perl-Digest-MD5-2.55-396.el8.${ARCH_RPM}.rpm"
+            "perl-Encode-2.97-3.el8.${ARCH_RPM}.rpm"
+            "perl-Errno-1.28-423.el8_10.${ARCH_RPM}.rpm"
             "perl-Exporter-5.72-396.el8.noarch.rpm"
-            "perl-Fcntl-1.11-423.el8_10.x86_64.rpm"
+            "perl-Fcntl-1.11-423.el8_10.${ARCH_RPM}.rpm"
             "perl-File-Basename-2.85-423.el8_10.noarch.rpm"
             "perl-FileHandle-2.02-423.el8_10.noarch.rpm"
             "perl-File-Path-2.15-2.el8.noarch.rpm"
@@ -492,30 +502,30 @@ setup_rpm_tables() {
             "perl-Getopt-Std-1.12-423.el8_10.noarch.rpm"
             "perl-HTTP-Tiny-0.074-1.el8.noarch.rpm"
             "perl-if-0.60.800-423.el8_10.noarch.rpm"
-            "perl-IO-1.38-423.el8_10.x86_64.rpm"
+            "perl-IO-1.38-423.el8_10.${ARCH_RPM}.rpm"
             "perl-IO-Socket-IP-0.39-5.el8.noarch.rpm"
             "perl-IO-Socket-SSL-2.066-4.module_el8.6.0+2811+af9eff40.noarch.rpm"
             "perl-IPC-Open3-1.16-423.el8_10.noarch.rpm"
             "perl-libnet-3.11-3.el8.noarch.rpm"
-            "perl-MIME-Base64-3.15-396.el8.x86_64.rpm"
+            "perl-MIME-Base64-3.15-396.el8.${ARCH_RPM}.rpm"
             "perl-Mozilla-CA-20160104-7.module_el8.5.0+2812+ed912d05.noarch.rpm"
-            "perl-mro-1.22-423.el8_10.x86_64.rpm"
-            "perl-NDBM_File-1.14-423.el8_10.x86_64.rpm"
-            "perl-Net-SSLeay-1.88-2.module_el8.6.0+2811+af9eff40.x86_64.rpm"
+            "perl-mro-1.22-423.el8_10.${ARCH_RPM}.rpm"
+            "perl-NDBM_File-1.14-423.el8_10.${ARCH_RPM}.rpm"
+            "perl-Net-SSLeay-1.88-2.module_el8.6.0+2811+af9eff40.${ARCH_RPM}.rpm"
             "perl-overload-1.30-423.el8_10.noarch.rpm"
             "perl-overloading-0.02-423.el8_10.noarch.rpm"
             "perl-parent-0.237-1.el8.noarch.rpm"
-            "perl-PathTools-3.74-1.el8.x86_64.rpm"
+            "perl-PathTools-3.74-1.el8.${ARCH_RPM}.rpm"
             "perl-Pod-Escapes-1.07-395.el8.noarch.rpm"
             "perl-podlators-4.11-1.el8.noarch.rpm"
             "perl-Pod-Perldoc-3.28-396.el8.noarch.rpm"
             "perl-Pod-Simple-3.35-395.el8.noarch.rpm"
             "perl-Pod-Usage-1.69-395.el8.noarch.rpm"
-            "perl-POSIX-1.75-423.el8_10.x86_64.rpm"
-            "perl-Scalar-List-Utils-1.49-2.el8.x86_64.rpm"
+            "perl-POSIX-1.75-423.el8_10.${ARCH_RPM}.rpm"
+            "perl-Scalar-List-Utils-1.49-2.el8.${ARCH_RPM}.rpm"
             "perl-SelectSaver-1.02-423.el8_10.noarch.rpm"
-            "perl-Socket-2.027-3.el8.x86_64.rpm"
-            "perl-Storable-3.11-3.el8.x86_64.rpm"
+            "perl-Socket-2.027-3.el8.${ARCH_RPM}.rpm"
+            "perl-Storable-3.11-3.el8.${ARCH_RPM}.rpm"
             "perl-subs-1.03-423.el8_10.noarch.rpm"
             "perl-Symbol-1.08-423.el8_10.noarch.rpm"
             "perl-Term-ANSIColor-4.06-396.el8.noarch.rpm"
@@ -530,21 +540,21 @@ setup_rpm_tables() {
         PERL_RPM_BASE="${ALMA_BASEOS_BASE}"
         PERL_RPM_APPSTREAM="${ALMA_APPSTREAM_BASE}"
         PERL_RPMS=(
-            "perl-interpreter-5.32.1-480.el9.x86_64.rpm"
-            "perl-libs-5.32.1-480.el9.x86_64.rpm"
+            "perl-interpreter-5.32.1-480.el9.${ARCH_RPM}.rpm"
+            "perl-libs-5.32.1-480.el9.${ARCH_RPM}.rpm"
             "perl-AutoLoader-5.74-480.el9.noarch.rpm"
-            "perl-B-1.80-480.el9.x86_64.rpm"
+            "perl-B-1.80-480.el9.${ARCH_RPM}.rpm"
             "perl-base-2.27-480.el9.noarch.rpm"
             "perl-Carp-1.50-460.el9.noarch.rpm"
             "perl-Class-Struct-0.66-480.el9.noarch.rpm"
             "perl-constant-1.33-461.el9.noarch.rpm"
-            "perl-Data-Dumper-2.174-462.el9.x86_64.rpm"
+            "perl-Data-Dumper-2.174-462.el9.${ARCH_RPM}.rpm"
             "perl-Digest-1.19-4.el9.noarch.rpm"
-            "perl-Digest-MD5-2.58-4.el9.x86_64.rpm"
-            "perl-Encode-3.08-462.el9.x86_64.rpm"
-            "perl-Errno-1.30-480.el9.x86_64.rpm"
+            "perl-Digest-MD5-2.58-4.el9.${ARCH_RPM}.rpm"
+            "perl-Encode-3.08-462.el9.${ARCH_RPM}.rpm"
+            "perl-Errno-1.30-480.el9.${ARCH_RPM}.rpm"
             "perl-Exporter-5.74-461.el9.noarch.rpm"
-            "perl-Fcntl-1.13-480.el9.x86_64.rpm"
+            "perl-Fcntl-1.13-480.el9.${ARCH_RPM}.rpm"
             "perl-File-Basename-2.85-480.el9.noarch.rpm"
             "perl-FileHandle-2.03-480.el9.noarch.rpm"
             "perl-File-Path-2.18-4.el9.noarch.rpm"
@@ -554,30 +564,30 @@ setup_rpm_tables() {
             "perl-Getopt-Std-1.12-480.el9.noarch.rpm"
             "perl-HTTP-Tiny-0.076-461.el9.noarch.rpm"
             "perl-if-0.60.800-480.el9.noarch.rpm"
-            "perl-IO-1.43-480.el9.x86_64.rpm"
+            "perl-IO-1.43-480.el9.${ARCH_RPM}.rpm"
             "perl-IO-Socket-IP-0.41-5.el9.noarch.rpm"
             "perl-IO-Socket-SSL-2.073-1.el9.noarch.rpm"
             "perl-IPC-Open3-1.21-480.el9.noarch.rpm"
             "perl-libnet-3.13-4.el9.noarch.rpm"
-            "perl-MIME-Base64-3.16-4.el9.x86_64.rpm"
+            "perl-MIME-Base64-3.16-4.el9.${ARCH_RPM}.rpm"
             "perl-Mozilla-CA-20200520-6.el9.noarch.rpm"
-            "perl-mro-1.23-480.el9.x86_64.rpm"
-            "perl-NDBM_File-1.15-480.el9.x86_64.rpm"
-            "perl-Net-SSLeay-1.92-2.el9.x86_64.rpm"
+            "perl-mro-1.23-480.el9.${ARCH_RPM}.rpm"
+            "perl-NDBM_File-1.15-480.el9.${ARCH_RPM}.rpm"
+            "perl-Net-SSLeay-1.92-2.el9.${ARCH_RPM}.rpm"
             "perl-overload-1.31-480.el9.noarch.rpm"
             "perl-overloading-0.02-480.el9.noarch.rpm"
             "perl-parent-0.238-460.el9.noarch.rpm"
-            "perl-PathTools-3.78-461.el9.x86_64.rpm"
+            "perl-PathTools-3.78-461.el9.${ARCH_RPM}.rpm"
             "perl-Pod-Escapes-1.07-460.el9.noarch.rpm"
             "perl-podlators-4.14-460.el9.noarch.rpm"
             "perl-Pod-Perldoc-3.28.01-461.el9.noarch.rpm"
             "perl-Pod-Simple-3.42-4.el9.noarch.rpm"
             "perl-Pod-Usage-2.01-4.el9.noarch.rpm"
-            "perl-POSIX-1.94-480.el9.x86_64.rpm"
-            "perl-Scalar-List-Utils-1.56-461.el9.x86_64.rpm"
+            "perl-POSIX-1.94-480.el9.${ARCH_RPM}.rpm"
+            "perl-Scalar-List-Utils-1.56-461.el9.${ARCH_RPM}.rpm"
             "perl-SelectSaver-1.02-480.el9.noarch.rpm"
-            "perl-Socket-2.031-4.el9.x86_64.rpm"
-            "perl-Storable-3.21-460.el9.x86_64.rpm"
+            "perl-Socket-2.031-4.el9.${ARCH_RPM}.rpm"
+            "perl-Storable-3.21-460.el9.${ARCH_RPM}.rpm"
             "perl-subs-1.03-480.el9.noarch.rpm"
             "perl-Symbol-1.08-480.el9.noarch.rpm"
             "perl-Term-ANSIColor-5.01-461.el9.noarch.rpm"
@@ -592,40 +602,40 @@ setup_rpm_tables() {
 
     # --- libnftnl RPM (for keepalivedbundle shared libs) ---
     if [[ "$TARGET_EL" == "el8" ]]; then
-        LIBNFTNL_RPM_URL="${ALMA_BASEOS_BASE}/libnftnl-1.2.2-3.el8.x86_64.rpm"
+        LIBNFTNL_RPM_URL="${ALMA_BASEOS_BASE}/libnftnl-1.2.2-3.el8.${ARCH_RPM}.rpm"
     else
-        LIBNFTNL_RPM_URL="${ALMA_BASEOS_BASE}/libnftnl-1.2.6-4.el9_4.x86_64.rpm"
+        LIBNFTNL_RPM_URL="${ALMA_BASEOS_BASE}/libnftnl-1.2.6-4.el9_4.${ARCH_RPM}.rpm"
     fi
 
     # --- tar/unzip/zip RPMs for other/ ---
     if [[ "$TARGET_EL" == "el8" ]]; then
         TAR_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/tar-1.30-11.el8_10.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/tar-1.30-9.el8.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/tar-1.30-11.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/tar-1.30-9.el8.${ARCH_RPM}.rpm"
         )
         UNZIP_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/unzip-6.0-48.el8_10.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/unzip-6.0-46.el8.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/unzip-6.0-48.el8_10.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/unzip-6.0-46.el8.${ARCH_RPM}.rpm"
         )
         ZIP_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/zip-3.0-23.el8.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/zip-3.0-23.el8.${ARCH_RPM}.rpm"
         )
     else
         TAR_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/tar-1.34-7.el9.x86_64.rpm"
-            "${ALMA_BASEOS_BASE}/tar-1.34-6.el9_1.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.5/BaseOS/x86_64/os/Packages/tar-1.34-7.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.4/BaseOS/x86_64/os/Packages/tar-1.34-6.el9_1.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/tar-1.34-7.el9.${ARCH_RPM}.rpm"
+            "${ALMA_BASEOS_BASE}/tar-1.34-6.el9_1.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.5/BaseOS/${ARCH_RPM}/os/Packages/tar-1.34-7.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.4/BaseOS/${ARCH_RPM}/os/Packages/tar-1.34-6.el9_1.${ARCH_RPM}.rpm"
         )
         UNZIP_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/unzip-6.0-56.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.5/BaseOS/x86_64/os/Packages/unzip-6.0-56.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.4/BaseOS/x86_64/os/Packages/unzip-6.0-56.el9.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/unzip-6.0-56.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.5/BaseOS/${ARCH_RPM}/os/Packages/unzip-6.0-56.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.4/BaseOS/${ARCH_RPM}/os/Packages/unzip-6.0-56.el9.${ARCH_RPM}.rpm"
         )
         ZIP_RPM_URLS=(
-            "${ALMA_BASEOS_BASE}/zip-3.0-35.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.5/BaseOS/x86_64/os/Packages/zip-3.0-35.el9.x86_64.rpm"
-            "${ALMA_VAULT_BASE}/9.4/BaseOS/x86_64/os/Packages/zip-3.0-35.el9.x86_64.rpm"
+            "${ALMA_BASEOS_BASE}/zip-3.0-35.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.5/BaseOS/${ARCH_RPM}/os/Packages/zip-3.0-35.el9.${ARCH_RPM}.rpm"
+            "${ALMA_VAULT_BASE}/9.4/BaseOS/${ARCH_RPM}/os/Packages/zip-3.0-35.el9.${ARCH_RPM}.rpm"
         )
     fi
 
@@ -990,7 +1000,7 @@ download_binaries() {
     # --- Kubernetes binaries ---
     log_info "Downloading Kubernetes binaries (${K8S_VERSION})..."
     for bin in kubeadm kubectl kubelet; do
-        local url="https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/${bin}"
+        local url="https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/${bin}"
         download_file "$url" "${bindir}/${bin}" "${bin} ${K8S_VERSION}" || failed=$((failed + 1))
     done
     # Make K8s binaries executable
@@ -998,7 +1008,7 @@ download_binaries() {
 
     # --- etcd binaries ---
     log_info "Downloading etcd (${ETCD_VERSION})..."
-    local etcd_tarball="etcd-${ETCD_VERSION}-linux-amd64.tar.gz"
+    local etcd_tarball="etcd-${ETCD_VERSION}-linux-${ARCH}.tar.gz"
     local etcd_url="https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/${etcd_tarball}"
     local etcd_tmp="${WORK_DIR}/tmp_etcd"
     mkdir -p "$etcd_tmp"
@@ -1023,7 +1033,7 @@ download_binaries() {
 
     # --- Helm ---
     log_info "Downloading Helm (${HELM_VERSION})..."
-    local helm_tarball="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+    local helm_tarball="helm-${HELM_VERSION}-linux-${ARCH}.tar.gz"
     local helm_url="https://get.helm.sh/${helm_tarball}"
     local helm_tmp="${WORK_DIR}/tmp_helm"
     mkdir -p "$helm_tmp"
@@ -1031,8 +1041,8 @@ download_binaries() {
     if download_file "$helm_url" "${helm_tmp}/${helm_tarball}" "helm ${HELM_VERSION}"; then
         if [[ $DRY_RUN -eq 0 ]]; then
             tar -xzf "${helm_tmp}/${helm_tarball}" -C "$helm_tmp"
-            if [[ -f "${helm_tmp}/linux-amd64/helm" ]]; then
-                cp "${helm_tmp}/linux-amd64/helm" "${bindir}/helm"
+            if [[ -f "${helm_tmp}/linux-${ARCH}/helm" ]]; then
+                cp "${helm_tmp}/linux-${ARCH}/helm" "${bindir}/helm"
                 chmod +x "${bindir}/helm"
                 log_info "  Extracted: helm"
             fi
@@ -1044,7 +1054,7 @@ download_binaries() {
 
     # --- crictl ---
     log_info "Downloading crictl (${CRICTL_VERSION})..."
-    local crictl_tarball="crictl-${CRICTL_VERSION}-linux-amd64.tar.gz"
+    local crictl_tarball="crictl-${CRICTL_VERSION}-linux-${ARCH}.tar.gz"
     local crictl_url="https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/${crictl_tarball}"
     local crictl_tmp="${WORK_DIR}/tmp_crictl"
     mkdir -p "$crictl_tmp"
@@ -1065,8 +1075,8 @@ download_binaries() {
 
     # --- cfssl + cfssljson ---
     log_info "Downloading cfssl (${CFSSL_VERSION})..."
-    local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_amd64"
-    local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_amd64"
+    local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_${ARCH}"
+    local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_${ARCH}"
     download_file "$cfssl_url" "${bindir}/cfssl" "cfssl ${CFSSL_VERSION}" || failed=$((failed + 1))
     download_file "$cfssljson_url" "${bindir}/cfssljson" "cfssljson ${CFSSL_VERSION}" || failed=$((failed + 1))
     [[ $DRY_RUN -eq 0 ]] && chmod +x "${bindir}/cfssl" "${bindir}/cfssljson" 2>/dev/null || true
@@ -1371,7 +1381,7 @@ download_packages() {
     local containerd_rpm="${CONTAINERD_RPM}"
     local containerd_urls=(
         "${DOCKER_REPO_BASE}/${containerd_rpm}"
-        "https://download.docker.com/linux/rhel/${TARGET_EL_MAJOR}/x86_64/stable/Packages/${containerd_rpm}"
+        "https://download.docker.com/linux/rhel/${TARGET_EL_MAJOR}/${ARCH_RPM}/stable/Packages/${containerd_rpm}"
     )
 
     local containerd_downloaded=0
@@ -1917,14 +1927,14 @@ download_other_files() {
 
     # --- yq ---
     log_info "Downloading yq (${YQ_VERSION})..."
-    local yq_url="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
-    download_file "$yq_url" "${cisdir}/yq_linux_amd64" "yq ${YQ_VERSION}" || failed=$((failed + 1))
-    [[ $DRY_RUN -eq 0 ]] && chmod +x "${cisdir}/yq_linux_amd64" 2>/dev/null || true
+    local yq_url="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}"
+    download_file "$yq_url" "${cisdir}/yq_linux_${ARCH}" "yq ${YQ_VERSION}" || failed=$((failed + 1))
+    [[ $DRY_RUN -eq 0 ]] && chmod +x "${cisdir}/yq_linux_${ARCH}" 2>/dev/null || true
 
     # --- cfssl + cfssljson in other/ (required by etcd role: ../other/cfssl) ---
     log_info "Placing cfssl + cfssljson in other/ (required by etcd role)..."
-    local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_amd64"
-    local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_amd64"
+    local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_${ARCH}"
+    local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_${ARCH}"
     download_file "$cfssl_url" "${otherdir}/cfssl" "cfssl ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
     download_file "$cfssljson_url" "${otherdir}/cfssljson" "cfssljson ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
     [[ $DRY_RUN -eq 0 ]] && chmod +x "${otherdir}/cfssl" "${otherdir}/cfssljson" 2>/dev/null || true
@@ -2074,7 +2084,7 @@ write_manifest() {
         "cfssl": "other/cfssl",
         "cfssljson": "other/cfssljson",
         "calico_manifest": "other/calico/calico_v${CALICO_VERSION}.yml",
-        "yq": "other/cis_hardening_scripts/yq_linux_amd64"
+        "yq": "other/cis_hardening_scripts/yq_linux_${ARCH}"
     },
     "container_images": [
         "registry.k8s.io/kube-apiserver:${K8S_VERSION}",

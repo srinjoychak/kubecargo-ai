@@ -1,0 +1,53 @@
+{
+  "claude-subagent": {
+    "description": "Native Claude Code subagent — spawned via Agent tool within the session",
+    "subagent_definition": "built-in (general-purpose)",
+    "dispatch_annotation": "[claude]",
+    "model_selection": "Inherits the session model. Change with /model opus|sonnet|haiku in Claude Code before dispatching.",
+    "isolation": "none by default — runs in main worktree",
+    "capabilities": ["code", "refactor", "test", "debug", "review", "research", "docs", "analysis"]
+  },
+  "gemini-worker": {
+    "description": "Gemini CLI via gemini-worker subagent (.claude/agents/gemini-worker.md)",
+    "subagent_definition": ".claude/agents/gemini-worker.md",
+    "dispatch_annotation": "[gemini]",
+    "model_selection": "[gemini --model flash|pro|pro-exp] — passed to scripts/gemini-ask.js",
+    "isolation": "worktree per task (isolation: worktree in agent definition)",
+    "wrapper_model": "haiku (lightweight wrapper — cost-effective)",
+    "capabilities": ["code", "refactor", "test", "debug", "review", "research", "docs", "analysis", "large-context"]
+  },
+  "codex-worker": {
+    "description": "Codex via codex-worker subagent (.claude/agents/codex-worker.md)",
+    "subagent_definition": ".claude/agents/codex-worker.md",
+    "dispatch_annotation": "[codex]",
+    "model_selection": "[codex --model gpt-5.4-mini|gpt-5.3-codex-spark] — passed to codex-plugin-cc",
+    "isolation": "worktree per task (isolation: worktree in agent definition)",
+    "wrapper_model": "haiku (lightweight wrapper — cost-effective)",
+    "concurrency": 1,
+    "concurrency_note": "JSON-RPC broker queues — one active Codex request at a time",
+    "capabilities": ["code", "refactor", "test", "debug", "review", "rescue", "adversarial-review"]
+  },
+  "vn-reviewer": {
+    "description": "Dedicated code reviewer subagent (.claude/agents/vn-reviewer.md)",
+    "subagent_definition": ".claude/agents/vn-reviewer.md",
+    "model": "sonnet",
+    "tools": "Read, Glob, Grep, Bash (read-only mode)",
+    "memory": "project — accumulates codebase knowledge across sessions",
+    "capabilities": ["review"]
+  },
+  "vn3-scripts": {
+    "description": "VN-Squad v3 self-improvement persistence layer scripts",
+    "location": "scripts/vn3/",
+    "scripts": {
+      "init-vn-squad.js": "Bootstrap .vn-squad/ artifacts (idempotent)",
+      "skill-manifest.js": "Scan .claude/commands/ → .vn-squad/skill-manifest.json",
+      "registry.js": "Atomic append dispatch outcomes to skill-registry.json",
+      "profile.js": "Recompute specialization-profile/ from registry",
+      "routing.js": "Routing decision algorithm — weighted_success_rate",
+      "session-context.js": "Seed/reset session-context.json, process CONTEXT_PROPOSALs",
+      "archive.js": "POSIX-atomic archive migration for skill-registry.json",
+      "patches.js": "prompt-patches lifecycle (add/expire/graduate)",
+      "trajectories.js": "Classify and capture trajectory type"
+    }
+  }
+}

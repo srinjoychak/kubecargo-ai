@@ -1,0 +1,40 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git pull:*)",
+      "mcp__orchestrator__orchestrate",
+      "mcp__orchestrator__task_logs",
+      "mcp__orchestrator__task_reset",
+      "Read(//home/srinjcha/.local/share/multi-agent-orchestrator-v3/**)",
+      "mcp__orchestrator__task_diff",
+      "mcp__orchestrator__task_accept",
+      "Bash(node:*)",
+      "Bash(npm test:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh api:*)",
+      "Bash(git branch:*)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "mcp__orchestrator__task_reject"
+    ]
+  },
+  "teammateMode": "in-process",
+  "mcpServers": {
+    "orchestrator": {
+      "command": "node",
+      "args": [
+        "/mnt/d/ALL_AUTOMATION/copilot_adapter/src/mcp-server/index.js"
+      ],
+      "env": {
+        "PROJECT_ROOT": "/mnt/d/ALL_AUTOMATION/copilot_adapter"
+      }
+    }
+  }
+}

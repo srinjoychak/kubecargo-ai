@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-04-09T07:53:41.477Z",
+  "skills": [
+    {
+      "name": "argue",
+      "file": ".claude/commands/argue.md",
+      "description": "/argue — Design Debate Loop (Claude ↔ Codex)",
+      "category": "design",
+      "tags": [
+        "design",
+        "debate",
+        "codex"
+      ]
+    },
+    {
+      "name": "dispatch",
+      "file": ".claude/commands/dispatch.md",
+      "description": "/dispatch — Parallel Agent Dispatch",
+      "category": "orchestration",
+      "tags": [
+        "parallel",
+        "agents",
+        "orchestration"
+      ]
+    },
+    {
+      "name": "finish",
+      "file": ".claude/commands/finish.md",
+      "description": "/finish — Finish a Development Branch",
+      "category": "lifecycle",
+      "tags": [
+        "merge",
+        "pr",
+        "lifecycle"
+      ]
+    },
+    {
+      "name": "gemini",
+      "file": ".claude/commands/gemini.md",
+      "description": "/gemini — Gemini CLI Adapter",
+      "category": "execution",
+      "tags": [
+        "gemini",
+        "research",
+        "large-context"
+      ]
+    },
+    {
+      "name": "plan",
+      "file": ".claude/commands/plan.md",
+      "description": "/plan — Writing Implementation Plans",
+      "category": "planning",
+      "tags": [
+        "tdd",
+        "planning",
+        "decompose"
+      ]
+    },
+    {
+      "name": "review",
+      "file": ".claude/commands/review.md",
+      "description": "/review — Request Code Review",
+      "category": "quality",
+      "tags": [
+        "review",
+        "quality"
+      ]
+    },
+    {
+      "name": "scaffold",
+      "file": ".claude/commands/scaffold.md",
+      "description": "/scaffold — Curriculum Task Decomposition",
+      "category": "planning",
+      "tags": [
+        "curriculum",
+        "tiered",
+        "planning"
+      ]
+    },
+    {
+      "name": "verify",
+      "file": ".claude/commands/verify.md",
+      "description": "/verify — Verification Before Completion",
+      "category": "quality",
+      "tags": [
+        "verify",
+        "gate",
+        "green"
+      ]
+    },
+    {
+      "name": "vn3-status",
+      "file": ".claude/commands/vn3-status.md",
+      "description": "/vn3-status — VN-Squad v3 Self-Improvement Status",
+      "category": "observability",
+      "tags": [
+        "v3",
+        "status",
+        "observability"
+      ]
+    },
+    {
+      "name": "worktrees",
+      "file": ".claude/commands/worktrees.md",
+      "description": "/worktrees — Git Worktree Management",
+      "category": "orchestration",
+      "tags": [
+        "git",
+        "isolation"
+      ]
+    }
+  ]
+}

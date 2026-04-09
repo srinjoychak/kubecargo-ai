@@ -45,6 +45,7 @@ DEFAULT_CFSSL_VERSION="1.6.5"
 DEFAULT_SOCAT_VERSION="1.8.0.3"
 DEFAULT_KEEPALIVED_VERSION="v2.2.8"
 DEFAULT_YQ_VERSION="v4.44.6"
+VERIFY_CHECKSUMS=0
 
 # RPM package versions — now set dynamically by setup_rpm_tables() based on TARGET_EL
 DEFAULT_TAR_RPM=""
@@ -106,6 +107,7 @@ Optional:
                            Used to copy socat, keepalived, keepalivedbundle,
                            and RPM packages that can't be downloaded
   --proxy URL              HTTP proxy for downloads (e.g., http://proxy:80)
+  --verify-checksums       Verify SHA256 checksums after download (where available)
   --debug                  Enable debug output
   --dry-run                Show what would be downloaded without downloading
   --help                   Show this help message
@@ -184,6 +186,7 @@ parse_args() {
             --skip-version-resolve) SKIP_VERSION_RESOLVE=1; shift;;
             --existing-bundle)   EXISTING_BUNDLE="$2"; shift 2;;
             --proxy)             PROXY_URL="$2"; shift 2;;
+            --verify-checksums)  VERIFY_CHECKSUMS=1; shift;;
             --debug)             DEBUG=1; shift;;
             --dry-run)           DRY_RUN=1; shift;;
             --help|-h)           usage;;
@@ -988,6 +991,45 @@ download_file() {
 }
 
 # ============================================================================
+# CHECKSUM VERIFICATION
+# ============================================================================
+verify_checksum() {
+    # Usage: verify_checksum <local_file> <download_url> <description>
+    # Fetches <download_url>.sha256 and compares against local file.
+    # Returns 0 on match or if checksum unavailable (soft skip).
+    # Returns 1 on mismatch.
+    local file="$1"
+    local url="$2"
+    local desc="$3"
+
+    [[ $VERIFY_CHECKSUMS -eq 0 ]] && return 0
+    [[ ${DRY_RUN:-0} -eq 1 ]] && return 0
+    [[ ! -f "$file" ]] && return 0
+
+    local sha_url="${url}.sha256"
+    local expected
+    expected=$(curl -fsSL --connect-timeout 15 --max-time 30 "$sha_url" 2>/dev/null | awk '{print $1}')
+
+    if [[ -z "$expected" ]]; then
+        log_warn "  Checksum not available for ${desc}"
+        return 0
+    fi
+
+    local actual
+    actual=$(sha256sum "$file" | awk '{print $1}')
+
+    if [[ "$actual" == "$expected" ]]; then
+        log_info "  SHA256 OK: ${desc}"
+        return 0
+    else
+        log_error "  SHA256 MISMATCH: ${desc}"
+        log_error "    expected: ${expected}"
+        log_error "    actual:   ${actual}"
+        return 1
+    fi
+}
+
+# ============================================================================
 # PHASE 1: BINARIES
 # ============================================================================
 download_binaries() {
@@ -1009,7 +1051,11 @@ download_binaries() {
     for bin in kubeadm kubectl kubelet; do
         local url="https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/${bin}"
         total=$((total + 1))
-        download_file "$url" "${bindir}/${bin}" "${bin} ${K8S_VERSION}" || failed=$((failed + 1))
+        if download_file "$url" "${bindir}/${bin}" "${bin} ${K8S_VERSION}"; then
+            verify_checksum "${bindir}/${bin}" "$url" "$bin" || failed=$((failed + 1))
+        else
+            failed=$((failed + 1))
+        fi
     done
     # Make K8s binaries executable
     [[ $DRY_RUN -eq 0 ]] && chmod +x "${bindir}/kubeadm" "${bindir}/kubectl" "${bindir}/kubelet" 2>/dev/null || true
@@ -1049,6 +1095,7 @@ download_binaries() {
 
     total=$((total + 1))
     if download_file "$helm_url" "${helm_tmp}/${helm_tarball}" "helm ${HELM_VERSION}"; then
+        verify_checksum "${helm_tmp}/${helm_tarball}" "$helm_url" "helm" || failed=$((failed + 1))
         if [[ $DRY_RUN -eq 0 ]]; then
             tar -xzf "${helm_tmp}/${helm_tarball}" -C "$helm_tmp"
             if [[ -f "${helm_tmp}/linux-${ARCH}/helm" ]]; then

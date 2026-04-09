@@ -17,12 +17,14 @@ bin-release/
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
 
-# VN-Squad v3 runtime state
-.vn-squad/skill-registry.json
-.vn-squad/skill-registry-archive/
-.vn-squad/session-context.json
-.vn-squad/decisions.json
-.vn-squad/prompt-patches.json
-.vn-squad/specialization-profile/
-.vn-squad/trajectories/
-.vn-squad/skills/
+# VN-Squad v3 — all orchestration files (never commit)
+.vn-squad/
+.claude/
+AGENTS.md
+agents.json
+package.json
+package-lock.json
+scripts/gemini-ask.js
+scripts/vn3/
+config/gemini-settings.json
+.codex/

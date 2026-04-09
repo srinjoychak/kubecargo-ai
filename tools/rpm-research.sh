@@ -111,11 +111,11 @@ find_rpm() {
     fi
 
     # Extract href="...something.rpm" → bare filename
+    # Use lookahead (?=") so the trailing quote is not included in the match
     local filename
     filename=$(
         printf '%s\n' "$listing" \
-        | grep -oP 'href="[^"]+\.rpm"' \
-        | grep -oP '[^/"]+\.rpm$' \
+        | grep -oP 'href="\K[^"]+\.rpm(?=")' \
         | grep -P "$pkg_prefix" \
         | sort -V \
         | tail -1
@@ -252,10 +252,10 @@ build_core_rpms_json() {
     local out="["
     for u in "${urls[@]+"${urls[@]}"}"; do
         [[ $first -eq 0 ]] && out+=","
-        out+=$(printf '\n      "%s"' "$u")
+        out+=$'\n'"      \"$u\""
         first=0
     done
-    out+="\n    ]"
+    out+=$'\n    ]'
     printf '%s' "$out"
 }
 
@@ -272,6 +272,8 @@ echo "==> Writing JSON to: ${OUTPUT_FILE}"
 
 core_rpms_json=$(build_core_rpms_json)
 perl_rpm_val="${perl_rpm:-}"
+# emit [] if perl-interpreter not found (main script falls back to hardcoded values)
+[[ -n "$perl_rpm_val" ]] && perl_rpms_json="[\"$perl_rpm_val\"]" || perl_rpms_json="[]"
 
 cat > "$OUTPUT_FILE" <<ENDJSON
 {
@@ -287,7 +289,7 @@ cat > "$OUTPUT_FILE" <<ENDJSON
   "keepalived": {
     "rpm_url": $(jv "$keepalived_url"),
     "core_rpms": ${core_rpms_json},
-    "perl_rpms": [$(jv "$perl_rpm_val")],
+    "perl_rpms": ${perl_rpms_json},
     "perl_rpm_base": $(jv "$BASEOS"),
     "perl_rpm_appstream": $(jv "$APPSTREAM")
   },

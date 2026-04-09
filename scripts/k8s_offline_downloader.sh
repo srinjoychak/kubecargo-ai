@@ -1544,7 +1544,7 @@ download_packages() {
     total=$((total + 1))
     log_info "Downloading chrony RPMs (${TARGET_EL})..."
     local chrony_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader (resolves dependencies automatically)
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for chrony + dependencies..."
@@ -1615,7 +1615,7 @@ download_packages() {
     total=$((total + 1))
     log_info "Downloading keepalived RPMs + dependencies (${TARGET_EL})..."
     local keepalived_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader (resolves all dependencies automatically)
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for keepalived + ALL dependencies..."
@@ -1916,7 +1916,7 @@ download_other_files() {
     log_info "Downloading system RPMs (tar, unzip, zip) for other/ (${TARGET_EL})..."
 
     local sysrpms_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for tar, unzip, zip..."

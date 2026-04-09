@@ -18,9 +18,10 @@ The AI must collect and normalize these parameters:
 
 The download script `scripts/k8s_offline_downloader.sh` **must** run on a Linux host with internet access.
 - If the current environment is **Windows or macOS**, the AI **must** instruct the user to:
-    1.  SSH into a Linux build server.
-    2.  OR use a Docker-in-Docker execution context.
-- **Required Tools on Host:** `curl`, `tar`, `jq`, `skopeo` (or `docker`), `rpm2cpio`, `cpio`.
+    1.  SSH into a Linux build server or VM.
+    2.  OR use a Linux container context (optional).
+- **Required Tools on Host:** `curl`, `tar`, `jq`.
+- **Optional but Recommended:** `skopeo` (or `docker`) for images, `rpm2cpio` and `cpio` for RPM extraction fallbacks.
 
 ---
 

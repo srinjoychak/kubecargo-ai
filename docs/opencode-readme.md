@@ -41,8 +41,8 @@ git clone <K8s Automation_Ansible_repo_url>
 
 ### Step 2 - Verify Execution Environment
 The AI skill requires a **Linux host with internet access**. If your current machine is Windows or macOS:
-- SSH into a Linux build server.
-- OR run the AI within a Linux container.
+- SSH into a Linux build server or VM.
+- OR run the AI within a Linux container (optional).
 
 ### Step 3 - Download K8s Packages via AI Skill
 Open your AI assistant (Claude, Gemini, or OpenCode) and use this prompt:

@@ -16,3 +16,15 @@ bin-release/
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
+
+# VN-Squad v3 — all orchestration files (never commit)
+.vn-squad/
+.claude/
+AGENTS.md
+agents.json
+package.json
+package-lock.json
+scripts/gemini-ask.js
+scripts/vn3/
+config/gemini-settings.json
+.codex/

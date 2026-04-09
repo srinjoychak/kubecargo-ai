@@ -30,6 +30,12 @@ ARCH_RPM="x86_64"
 OS="linux"
 PLATFORM="${OS}-${ARCH}"
 
+# Phase outcome tracking
+PHASE1_TOTAL=0; PHASE1_FAILED=0
+PHASE2_TOTAL=0; PHASE2_FAILED=0
+PHASE3_TOTAL=0; PHASE3_FAILED=0
+PHASE4_TOTAL=0; PHASE4_FAILED=0
+
 # Default component versions (overridden by auto-resolution)
 DEFAULT_ETCD_VERSION="v3.5.21"
 DEFAULT_HELM_VERSION="v3.17.3"
@@ -996,11 +1002,13 @@ download_binaries() {
     mkdir -p "$bindir"
 
     local failed=0
+    local total=0
 
     # --- Kubernetes binaries ---
     log_info "Downloading Kubernetes binaries (${K8S_VERSION})..."
     for bin in kubeadm kubectl kubelet; do
         local url="https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/${ARCH}/${bin}"
+        total=$((total + 1))
         download_file "$url" "${bindir}/${bin}" "${bin} ${K8S_VERSION}" || failed=$((failed + 1))
     done
     # Make K8s binaries executable
@@ -1013,6 +1021,7 @@ download_binaries() {
     local etcd_tmp="${WORK_DIR}/tmp_etcd"
     mkdir -p "$etcd_tmp"
 
+    total=$((total + 1))
     if download_file "$etcd_url" "${etcd_tmp}/${etcd_tarball}" "etcd ${ETCD_VERSION}"; then
         if [[ $DRY_RUN -eq 0 ]]; then
             tar -xzf "${etcd_tmp}/${etcd_tarball}" -C "$etcd_tmp" --strip-components=1
@@ -1038,6 +1047,7 @@ download_binaries() {
     local helm_tmp="${WORK_DIR}/tmp_helm"
     mkdir -p "$helm_tmp"
 
+    total=$((total + 1))
     if download_file "$helm_url" "${helm_tmp}/${helm_tarball}" "helm ${HELM_VERSION}"; then
         if [[ $DRY_RUN -eq 0 ]]; then
             tar -xzf "${helm_tmp}/${helm_tarball}" -C "$helm_tmp"
@@ -1059,6 +1069,7 @@ download_binaries() {
     local crictl_tmp="${WORK_DIR}/tmp_crictl"
     mkdir -p "$crictl_tmp"
 
+    total=$((total + 1))
     if download_file "$crictl_url" "${crictl_tmp}/${crictl_tarball}" "crictl ${CRICTL_VERSION}"; then
         if [[ $DRY_RUN -eq 0 ]]; then
             tar -xzf "${crictl_tmp}/${crictl_tarball}" -C "$crictl_tmp"
@@ -1077,11 +1088,12 @@ download_binaries() {
     log_info "Downloading cfssl (${CFSSL_VERSION})..."
     local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_${ARCH}"
     local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_${ARCH}"
-    download_file "$cfssl_url" "${bindir}/cfssl" "cfssl ${CFSSL_VERSION}" || failed=$((failed + 1))
-    download_file "$cfssljson_url" "${bindir}/cfssljson" "cfssljson ${CFSSL_VERSION}" || failed=$((failed + 1))
+    total=$((total + 1)); download_file "$cfssl_url" "${bindir}/cfssl" "cfssl ${CFSSL_VERSION}" || failed=$((failed + 1))
+    total=$((total + 1)); download_file "$cfssljson_url" "${bindir}/cfssljson" "cfssljson ${CFSSL_VERSION}" || failed=$((failed + 1))
     [[ $DRY_RUN -eq 0 ]] && chmod +x "${bindir}/cfssl" "${bindir}/cfssljson" 2>/dev/null || true
 
     # --- socat (RPM extract → existing bundle → system binary → compile from source) ---
+    total=$((total + 1))
     log_info "socat: obtaining binary..."
     if [[ -f "${bindir}/socat" ]]; then
         log_info "  Already exists: socat"
@@ -1167,6 +1179,7 @@ download_binaries() {
     fi
 
     # --- keepalived (RPM extract → existing bundle → system binary) ---
+    total=$((total + 1))
     log_info "keepalived: obtaining binary..."
     if [[ -f "${bindir}/keepalived" ]]; then
         log_info "  Already exists: keepalived"
@@ -1237,7 +1250,9 @@ download_binaries() {
         log_warn "${failed} binary download(s) failed"
     fi
 
-    return 0
+    PHASE1_TOTAL=$((total))
+    PHASE1_FAILED=$((failed))
+    return $failed
 }
 
 # ============================================================================
@@ -1281,11 +1296,14 @@ download_images() {
     IMAGE_FILENAMES["calico-kube-controllers"]="calico_kube-controllers_v${CALICO_VERSION}.tar.gz"
 
     local failed=0
+    local total=0
 
     for name in "${!IMAGES[@]}"; do
         local image="${IMAGES[$name]}"
         local filename="${IMAGE_FILENAMES[$name]}"
         local tarfile="${imgdir}/${filename}"
+
+        total=$((total + 1))
 
         if [[ $DRY_RUN -eq 1 ]]; then
             echo "  [DRY-RUN] Would pull and save: ${image} -> ${filename}"
@@ -1356,7 +1374,9 @@ download_images() {
         log_warn "${failed} image download(s) failed"
     fi
 
-    return 0
+    PHASE2_TOTAL=$((total))
+    PHASE2_FAILED=$((failed))
+    return $failed
 }
 
 # ============================================================================
@@ -1375,8 +1395,10 @@ download_packages() {
     mkdir -p "${pkgdir}/keepalivedbundle"
 
     local failed=0
+    local total=0
 
     # --- containerd RPM ---
+    total=$((total + 1))
     log_info "Downloading containerd RPM (${CONTAINERD_VERSION_EFFECTIVE} for ${TARGET_EL})..."
     local containerd_rpm="${CONTAINERD_RPM}"
     local containerd_urls=(
@@ -1423,6 +1445,7 @@ download_packages() {
     }
 
     # --- chrony RPMs ---
+    total=$((total + 1))
     log_info "Downloading chrony RPMs (${TARGET_EL})..."
     local chrony_downloaded=0
     if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
@@ -1493,6 +1516,7 @@ download_packages() {
     fi
 
     # --- keepalived RPMs + all perl dependencies ---
+    total=$((total + 1))
     log_info "Downloading keepalived RPMs + dependencies (${TARGET_EL})..."
     local keepalived_downloaded=0
     if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
@@ -1768,7 +1792,9 @@ download_packages() {
         log_warn "${failed} package download(s) failed"
     fi
 
-    return 0
+    PHASE3_TOTAL=$((total))
+    PHASE3_FAILED=$((failed))
+    return $failed
 }
 
 # ============================================================================
@@ -1787,8 +1813,10 @@ download_other_files() {
     mkdir -p "$cisdir"
 
     local failed=0
+    local total=0
 
     # --- tar/unzip/zip RPMs ---
+    total=$((total + 1))
     log_info "Downloading system RPMs (tar, unzip, zip) for other/ (${TARGET_EL})..."
 
     local sysrpms_downloaded=0
@@ -1926,6 +1954,7 @@ download_other_files() {
     fi
 
     # --- yq ---
+    total=$((total + 1))
     log_info "Downloading yq (${YQ_VERSION})..."
     local yq_url="https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${ARCH}"
     download_file "$yq_url" "${cisdir}/yq_linux_${ARCH}" "yq ${YQ_VERSION}" || failed=$((failed + 1))
@@ -1935,11 +1964,12 @@ download_other_files() {
     log_info "Placing cfssl + cfssljson in other/ (required by etcd role)..."
     local cfssl_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssl_${CFSSL_VERSION}_linux_${ARCH}"
     local cfssljson_url="https://github.com/cloudflare/cfssl/releases/download/v${CFSSL_VERSION}/cfssljson_${CFSSL_VERSION}_linux_${ARCH}"
-    download_file "$cfssl_url" "${otherdir}/cfssl" "cfssl ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
-    download_file "$cfssljson_url" "${otherdir}/cfssljson" "cfssljson ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
+    total=$((total + 1)); download_file "$cfssl_url" "${otherdir}/cfssl" "cfssl ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
+    total=$((total + 1)); download_file "$cfssljson_url" "${otherdir}/cfssljson" "cfssljson ${CFSSL_VERSION} (other/)" || failed=$((failed + 1))
     [[ $DRY_RUN -eq 0 ]] && chmod +x "${otherdir}/cfssl" "${otherdir}/cfssljson" 2>/dev/null || true
 
     # --- Calico manifest in other/calico/ ---
+    total=$((total + 1))
     log_info "Downloading Calico v${CALICO_VERSION} manifest..."
     local calico_dir="${otherdir}/calico"
     mkdir -p "$calico_dir"
@@ -1965,6 +1995,7 @@ download_other_files() {
     done
 
     # --- CRITICAL: Verify RPMs exist in other/ (ansible prerequisite check will fail without them) ---
+    total=$((total + 1))
     local rpm_count
     rpm_count=$(find "${otherdir}" -maxdepth 1 -name "*.rpm" -type f 2>/dev/null | wc -l)
     if [[ $DRY_RUN -eq 0 && "$rpm_count" -eq 0 ]]; then
@@ -1985,7 +2016,9 @@ download_other_files() {
         log_warn "${failed} other file download(s) failed"
     fi
 
-    return 0
+    PHASE4_TOTAL=$((total))
+    PHASE4_FAILED=$((failed))
+    return $failed
 }
 
 # ============================================================================
@@ -2104,6 +2137,46 @@ MANIFESTEOF
 }
 
 # ============================================================================
+# SUMMARY
+# ============================================================================
+print_summary() {
+    local overall_rc=0
+
+    # Phase 4 failures are fatal (Ansible requires other/ RPMs)
+    if [[ $PHASE4_FAILED -gt 0 ]]; then
+        overall_rc=1
+    elif [[ $((PHASE1_FAILED + PHASE2_FAILED + PHASE3_FAILED)) -gt 0 ]]; then
+        overall_rc=2
+    fi
+
+    local p1_status p2_status p3_status p4_status
+    [[ $PHASE1_FAILED -eq 0 ]] && p1_status="${GREEN}✓${NC}" || p1_status="${RED}✗${NC}"
+    [[ $PHASE2_FAILED -eq 0 ]] && p2_status="${GREEN}✓${NC}" || p2_status="${RED}✗${NC}"
+    [[ $PHASE3_FAILED -eq 0 ]] && p3_status="${GREEN}✓${NC}" || p3_status="${RED}✗${NC}"
+    [[ $PHASE4_FAILED -eq 0 ]] && p4_status="${GREEN}✓${NC}" || p4_status="${RED}✗${NC}"
+
+    echo ""
+    echo -e "╔════════════════════════════════════════════╗"
+    echo -e "║      kubecargo-ai  Download Summary        ║"
+    echo -e "╠════════════════════════════════════════════╣"
+    printf  "║ Phase 1 — Binaries   %b  %2d/%2d downloaded     ║\n" "$p1_status" "$((PHASE1_TOTAL - PHASE1_FAILED))" "$PHASE1_TOTAL"
+    printf  "║ Phase 2 — Images     %b  %2d/%2d downloaded     ║\n" "$p2_status" "$((PHASE2_TOTAL - PHASE2_FAILED))" "$PHASE2_TOTAL"
+    printf  "║ Phase 3 — Packages   %b  %2d/%2d downloaded     ║\n" "$p3_status" "$((PHASE3_TOTAL - PHASE3_FAILED))" "$PHASE3_TOTAL"
+    printf  "║ Phase 4 — Other      %b  %2d/%2d downloaded     ║\n" "$p4_status" "$((PHASE4_TOTAL - PHASE4_FAILED))" "$PHASE4_TOTAL"
+    echo -e "╠════════════════════════════════════════════╣"
+    if [[ $overall_rc -eq 0 ]]; then
+        echo -e "║ ${GREEN}Exit 0: All downloads successful${NC}            ║"
+    elif [[ $overall_rc -eq 1 ]]; then
+        echo -e "║ ${RED}Exit 1: CRITICAL — Phase 4 failures${NC}        ║"
+    else
+        echo -e "║ ${YELLOW}Exit 2: Partial failure (non-critical)${NC}     ║"
+    fi
+    echo -e "╚════════════════════════════════════════════╝"
+
+    return $overall_rc
+}
+
+# ============================================================================
 # MAIN
 # ============================================================================
 main() {
@@ -2154,16 +2227,16 @@ main() {
     fi
 
     # --- Phase 1: Binaries ---
-    download_binaries
+    PHASE1_RC=0; download_binaries    || PHASE1_RC=$?
 
     # --- Phase 2: Container Images ---
-    download_images
+    PHASE2_RC=0; download_images      || PHASE2_RC=$?
 
     # --- Phase 3: RPM Packages ---
-    download_packages
+    PHASE3_RC=0; download_packages    || PHASE3_RC=$?
 
     # --- Phase 4: Other files ---
-    download_other_files
+    PHASE4_RC=0; download_other_files || PHASE4_RC=$?
 
     # --- Phase 5: Update version constants ---
     update_version_constants
@@ -2171,21 +2244,8 @@ main() {
     # --- Write manifest ---
     write_manifest
 
-    echo ""
-    log_step "============================================================"
-    log_step "  Download Complete!"
-    log_step "============================================================"
-    echo ""
-    log_info "Output directory: ${OUTPUT_DIR}"
-    [[ -f "${OUTPUT_DIR}/binaries.tar.gz" ]] && log_info "  binaries.tar.gz:  $(du -h "${OUTPUT_DIR}/binaries.tar.gz" | cut -f1)" || true
-    [[ -f "${OUTPUT_DIR}/images.tar.gz" ]] && log_info "  images.tar.gz:    $(du -h "${OUTPUT_DIR}/images.tar.gz" | cut -f1)" || true
-    [[ -f "${OUTPUT_DIR}/packages.tar.gz" ]] && log_info "  packages.tar.gz:  $(du -h "${OUTPUT_DIR}/packages.tar.gz" | cut -f1)" || true
-    echo ""
-    log_info "Next steps:"
-    log_info "  1. Copy the tar.gz files and other/ directory to the air-gapped deployment server"
-    log_info "  2. Place them in the K8s Automation_Ansible project root directory"
-    log_info "  3. Run the ansible playbook: ansible-playbook k8s_install.yaml"
-    echo ""
+    print_summary
+    exit $?
 }
 
 main "$@"

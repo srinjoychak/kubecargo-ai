@@ -29,6 +29,12 @@ ARCH="amd64"
 ARCH_RPM="x86_64"
 OS="linux"
 PLATFORM="${OS}-${ARCH}"
+HOST_ARCH=""
+HOST_ARCH_RPM=""
+CONTAINER_PULL_ARGS=()
+SKOPEO_PULL_ARGS=()
+RPMDOWNLOADER_ARCH_ARGS=()
+DNF_DOWNLOAD_ARCH_ARGS=()
 
 # Phase outcome tracking
 PHASE1_TOTAL=0; PHASE1_FAILED=0
@@ -374,6 +380,22 @@ detect_host_os() {
     log_debug "Host OS: el${HOST_OS_VERSION_ID:-unknown}, IS_EL9=${IS_EL9}"
 }
 
+detect_host_arch() {
+    HOST_ARCH=$(uname -m 2>/dev/null || echo "")
+    case "$HOST_ARCH" in
+        x86_64|amd64)
+            HOST_ARCH_RPM="x86_64"
+            ;;
+        aarch64|arm64)
+            HOST_ARCH_RPM="aarch64"
+            ;;
+        *)
+            HOST_ARCH_RPM="$HOST_ARCH"
+            ;;
+    esac
+    log_debug "Host arch: ${HOST_ARCH:-unknown}, host RPM arch: ${HOST_ARCH_RPM:-unknown}"
+}
+
 # ============================================================================
 # RESOLVE TARGET OS — Determines which RPMs to download (el8 or el9)
 # ============================================================================
@@ -398,6 +420,20 @@ resolve_target_os() {
     log_debug "ALMA_APPSTREAM_BASE=${ALMA_APPSTREAM_BASE}"
     log_debug "ALMA_BASEOS_BASE=${ALMA_BASEOS_BASE}"
     log_debug "DOCKER_REPO_BASE=${DOCKER_REPO_BASE}"
+}
+
+setup_arch_translation() {
+    CONTAINER_PULL_ARGS=()
+    SKOPEO_PULL_ARGS=()
+    RPMDOWNLOADER_ARCH_ARGS=()
+    DNF_DOWNLOAD_ARCH_ARGS=()
+
+    if [[ "$ARCH" == "arm64" ]]; then
+        CONTAINER_PULL_ARGS=(--platform linux/arm64)
+        SKOPEO_PULL_ARGS=(--override-arch arm64)
+        RPMDOWNLOADER_ARCH_ARGS=(--archlist="${ARCH_RPM}")
+        DNF_DOWNLOAD_ARCH_ARGS=(--arch "${ARCH_RPM}")
+    fi
 }
 
 # ============================================================================
@@ -1181,43 +1217,51 @@ download_binaries() {
 
         # Strategy 2: Copy from system if installed
         if [[ ! -f "${bindir}/socat" ]] && command -v socat &>/dev/null; then
-            local sys_socat
-            sys_socat=$(command -v socat)
-            cp "$sys_socat" "${bindir}/socat"
-            chmod +x "${bindir}/socat"
-            log_info "  Copied socat from system: ${sys_socat}"
+            if [[ -n "$HOST_ARCH_RPM" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
+                local sys_socat
+                sys_socat=$(command -v socat)
+                cp "$sys_socat" "${bindir}/socat"
+                chmod +x "${bindir}/socat"
+                log_info "  Copied socat from system: ${sys_socat}"
+            else
+                log_warn "  Skipping system socat copy: host arch ${HOST_ARCH_RPM:-unknown} does not match target ${ARCH_RPM}"
+            fi
         fi
 
         # Strategy 3: Compile from source (updated URL — v1.8.0.3)
         if [[ ! -f "${bindir}/socat" ]]; then
-            log_info "  Compiling socat 1.8.0.3 from source..."
-            local socat_src_dir="${WORK_DIR}/tmp_socat_src"
-            mkdir -p "$socat_src_dir"
-            local socat_tarball="socat-1.8.0.3.tar.gz"
-            local socat_url="http://www.dest-unreach.org/socat/download/${socat_tarball}"
-            if download_file "$socat_url" "${socat_src_dir}/${socat_tarball}" "socat source 1.8.0.3"; then
-                (
-                    cd "$socat_src_dir"
-                    tar -xzf "$socat_tarball"
-                    cd "socat-1.8.0.3"
-                    if command -v gcc &>/dev/null && command -v make &>/dev/null; then
-                        ./configure --prefix=/usr 2>&1 | tail -5
-                        make -j"$(nproc)" 2>&1 | tail -5
-                        if [[ -f socat ]]; then
-                            cp socat "${bindir}/socat"
-                            chmod +x "${bindir}/socat"
-                            log_info "  Compiled socat successfully"
+            if [[ -n "$HOST_ARCH_RPM" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
+                log_info "  Compiling socat 1.8.0.3 from source..."
+                local socat_src_dir="${WORK_DIR}/tmp_socat_src"
+                mkdir -p "$socat_src_dir"
+                local socat_tarball="socat-1.8.0.3.tar.gz"
+                local socat_url="http://www.dest-unreach.org/socat/download/${socat_tarball}"
+                if download_file "$socat_url" "${socat_src_dir}/${socat_tarball}" "socat source 1.8.0.3"; then
+                    (
+                        cd "$socat_src_dir"
+                        tar -xzf "$socat_tarball"
+                        cd "socat-1.8.0.3"
+                        if command -v gcc &>/dev/null && command -v make &>/dev/null; then
+                            ./configure --prefix=/usr 2>&1 | tail -5
+                            make -j"$(nproc)" 2>&1 | tail -5
+                            if [[ -f socat ]]; then
+                                cp socat "${bindir}/socat"
+                                chmod +x "${bindir}/socat"
+                                log_info "  Compiled socat successfully"
+                            else
+                                log_warn "  socat compile produced no binary"
+                            fi
                         else
-                            log_warn "  socat compile produced no binary"
+                            log_warn "  gcc/make not available. Cannot compile socat."
                         fi
-                    else
-                        log_warn "  gcc/make not available. Cannot compile socat."
-                    fi
-                ) || log_warn "  socat compilation failed"
+                    ) || log_warn "  socat compilation failed"
+                else
+                    log_warn "  Could not download socat source"
+                fi
+                rm -rf "$socat_src_dir"
             else
-                log_warn "  Could not download socat source"
+                log_warn "  Skipping socat source compilation: host arch ${HOST_ARCH_RPM:-unknown} does not match target ${ARCH_RPM}"
             fi
-            rm -rf "$socat_src_dir"
         fi
 
         if [[ ! -f "${bindir}/socat" ]]; then
@@ -1269,11 +1313,15 @@ download_binaries() {
 
         # Strategy 2: Copy from system if installed
         if [[ ! -f "${bindir}/keepalived" ]] && command -v keepalived &>/dev/null; then
-            local sys_ka
-            sys_ka=$(command -v keepalived)
-            cp "$sys_ka" "${bindir}/keepalived"
-            chmod +x "${bindir}/keepalived"
-            log_info "  Copied keepalived from system: ${sys_ka}"
+            if [[ -n "$HOST_ARCH_RPM" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
+                local sys_ka
+                sys_ka=$(command -v keepalived)
+                cp "$sys_ka" "${bindir}/keepalived"
+                chmod +x "${bindir}/keepalived"
+                log_info "  Copied keepalived from system: ${sys_ka}"
+            else
+                log_warn "  Skipping system keepalived copy: host arch ${HOST_ARCH_RPM:-unknown} does not match target ${ARCH_RPM}"
+            fi
         fi
 
         # Strategy 3: Still defer to packages phase as last resort
@@ -1366,7 +1414,7 @@ download_images() {
         log_info "  Pulling: ${image}..."
         case "${CONTAINER_RUNTIME}" in
             docker)
-                if docker pull "$image" 2>&1; then
+                if docker pull "${CONTAINER_PULL_ARGS[@]}" "$image" 2>&1; then
                     # Save as raw (uncompressed) tar — ctr import does NOT support gzip.
                     # File is named .tar.gz to match reference convention, but content is raw tar.
                     docker save -o "$tarfile" "$image" 2>&1
@@ -1377,7 +1425,7 @@ download_images() {
                 fi
                 ;;
             skopeo)
-                if skopeo copy "docker://${image}" "docker-archive:${tarfile}:${image}" 2>&1; then
+                if skopeo copy "${SKOPEO_PULL_ARGS[@]}" "docker://${image}" "docker-archive:${tarfile}:${image}" 2>&1; then
                     log_info "  Saved: ${filename} ($(du -h "$tarfile" | cut -f1))"
                 else
                     log_error "  Failed to copy: ${image}"
@@ -1385,7 +1433,7 @@ download_images() {
                 fi
                 ;;
             ctr)
-                if ctr images pull "$image" 2>&1; then
+                if ctr images pull "${CONTAINER_PULL_ARGS[@]}" "$image" 2>&1; then
                     ctr images export "$tarfile" "$image" 2>&1
                     log_info "  Saved: ${filename} ($(du -h "$tarfile" | cut -f1))"
                 else
@@ -1496,12 +1544,12 @@ download_packages() {
     total=$((total + 1))
     log_info "Downloading chrony RPMs (${TARGET_EL})..."
     local chrony_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader (resolves dependencies automatically)
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for chrony + dependencies..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if yumdownloader --destdir="${pkgdir}" --resolve chrony 2>&1; then
+                if yumdownloader "${RPMDOWNLOADER_ARCH_ARGS[@]}" --destdir="${pkgdir}" --resolve chrony 2>&1; then
                     chrony_downloaded=1
                 else
                     log_warn "  yumdownloader failed for chrony, trying dnf download..."
@@ -1514,7 +1562,7 @@ download_packages() {
         if [[ $chrony_downloaded -eq 0 ]] && command -v dnf &>/dev/null; then
             log_info "  Using dnf download (${TARGET_EL}) for chrony..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if dnf download --destdir="${pkgdir}" --resolve chrony 2>&1; then
+                if dnf download "${DNF_DOWNLOAD_ARCH_ARGS[@]}" --destdir="${pkgdir}" --resolve chrony 2>&1; then
                     chrony_downloaded=1
                 else
                     log_warn "  dnf download failed for chrony, falling back to direct URL..."
@@ -1567,12 +1615,12 @@ download_packages() {
     total=$((total + 1))
     log_info "Downloading keepalived RPMs + dependencies (${TARGET_EL})..."
     local keepalived_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader (resolves all dependencies automatically)
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for keepalived + ALL dependencies..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if yumdownloader --destdir="${pkgdir}" --resolve keepalived 2>&1; then
+                if yumdownloader "${RPMDOWNLOADER_ARCH_ARGS[@]}" --destdir="${pkgdir}" --resolve keepalived 2>&1; then
                     keepalived_downloaded=1
                 else
                     log_warn "  yumdownloader failed for keepalived, trying dnf download..."
@@ -1585,7 +1633,7 @@ download_packages() {
         if [[ $keepalived_downloaded -eq 0 ]] && command -v dnf &>/dev/null; then
             log_info "  Using dnf download (${TARGET_EL}) for keepalived..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if dnf download --destdir="${pkgdir}" --resolve keepalived 2>&1; then
+                if dnf download "${DNF_DOWNLOAD_ARCH_ARGS[@]}" --destdir="${pkgdir}" --resolve keepalived 2>&1; then
                     keepalived_downloaded=1
                 else
                     log_warn "  dnf download failed for keepalived, falling back to direct URL..."
@@ -1868,12 +1916,12 @@ download_other_files() {
     log_info "Downloading system RPMs (tar, unzip, zip) for other/ (${TARGET_EL})..."
 
     local sysrpms_downloaded=0
-    if [[ "$HOST_OS_EL" == "$TARGET_EL" ]]; then
+    if [[ "$HOST_OS_EL" == "$TARGET_EL" && "$HOST_ARCH_RPM" == "$ARCH_RPM" ]]; then
         # Tier 1: yumdownloader
         if command -v yumdownloader &>/dev/null; then
             log_info "  Using yumdownloader (${TARGET_EL}) for tar, unzip, zip..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if yumdownloader --destdir="${otherdir}" tar unzip zip 2>&1; then
+                if yumdownloader "${RPMDOWNLOADER_ARCH_ARGS[@]}" --destdir="${otherdir}" tar unzip zip 2>&1; then
                     sysrpms_downloaded=1
                 else
                     log_warn "  yumdownloader failed for tar/unzip/zip RPMs, trying dnf download..."
@@ -1886,7 +1934,7 @@ download_other_files() {
         if [[ $sysrpms_downloaded -eq 0 ]] && command -v dnf &>/dev/null; then
             log_info "  Using dnf download (${TARGET_EL}) for tar, unzip, zip..."
             if [[ $DRY_RUN -eq 0 ]]; then
-                if dnf download --destdir="${otherdir}" tar unzip zip 2>&1; then
+                if dnf download "${DNF_DOWNLOAD_ARCH_ARGS[@]}" --destdir="${otherdir}" tar unzip zip 2>&1; then
                     sysrpms_downloaded=1
                 else
                     log_warn "  dnf download failed for tar/unzip/zip RPMs, falling back to direct URL..."
@@ -2245,12 +2293,12 @@ main() {
     log_info "Work dir:    ${WORK_DIR}"
     echo ""
 
-    # --- Prerequisite checks ---
+    # --- Detect host architecture/OS, resolve target OS, and set up tables ---
+    detect_host_arch
     check_prerequisites
-
-    # --- Detect host OS, resolve target OS, and set up RPM tables ---
     detect_host_os
     resolve_target_os
+    setup_arch_translation
     setup_rpm_tables
     load_rpm_config
     auto_detect_existing_bundle

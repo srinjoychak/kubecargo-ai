@@ -938,7 +938,7 @@ resolve_calico_version() {
 
     case "$k8s_minor" in
         1.29) CALICO_VERSION="3.26.1" ;;
-        1.30) CALICO_VERSION="3.28.2" ;;
+        1.30) CALICO_VERSION="3.27.3" ;;
         1.31) CALICO_VERSION="3.28.2" ;;
         1.32) CALICO_VERSION="3.29.0" ;;
         1.33) CALICO_VERSION="3.29.0" ;;

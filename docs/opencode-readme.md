@@ -36,7 +36,7 @@ To ensure consistency across all AI models (Claude, Gemini, Codex, OpenCode), th
 Pull the K8s Automation_Ansible automation code onto your deployment/staging server.
 
 ```bash
-git clone <K8s Automation_Ansible_repo_url>
+git clone https://github.com/srinjoychak/kubecargo-ai.git
 ```
 
 ### Step 2 - Verify Execution Environment

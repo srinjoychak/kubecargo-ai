@@ -17,8 +17,6 @@ bin-release/
 # should NOT be excluded as they contain compiler settings and other important
 # information for Eclipse / Flash Builder.
 
-# VN-Squad v3 — all orchestration files (never commit)
-.vn-squad/
 .claude/
 AGENTS.md
 agents.json
@@ -28,3 +26,5 @@ scripts/gemini-ask.js
 scripts/vn3/
 config/gemini-settings.json
 .codex/
+.codex
+.codex
